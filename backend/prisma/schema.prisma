@@ -1,0 +1,218 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  BUSINESS_OWNER
+  EMPLOYEE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  INVESTMENT
+}
+
+enum PaymentMethod {
+  CASH
+  ONLINE
+  BANK
+  CHEQUE
+  UPI
+}
+
+enum TransactionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Language {
+  EN
+  GU
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  passwordHash       String
+  role               UserRole
+  employeeId         String?             @unique
+  name               String
+  phone              String?
+  profilePhoto       String?
+  languagePref       Language            @default(EN)
+  isActive           Boolean             @default(true)
+  businessId         String?
+  business           Business?           @relation("BusinessEmployees", fields: [businessId], references: [id], onDelete: SetNull)
+  ownedBusinesses    Business[]          @relation("BusinessOwner")
+  transactions       Transaction[]
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  dailyReports       DailyReport[]
+  passwordResetToken PasswordResetToken?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([role])
+  @@index([businessId])
+}
+
+model Business {
+  id             String         @id @default(cuid())
+  name           String
+  nameGu         String?
+  logo           String?
+  description    String?
+  phone          String?
+  email          String?
+  address        String?
+  openingBalance Decimal        @default(0) @db.Decimal(14, 2)
+  currency       String         @default("INR")
+  isActive       Boolean        @default(true)
+  ownerId        String
+  owner          User           @relation("BusinessOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  employees      User[]         @relation("BusinessEmployees")
+  transactions   Transaction[]
+  categories     Category[]
+  dailyReports   DailyReport[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([ownerId])
+}
+
+model Transaction {
+  id              String            @id @default(cuid())
+  type            TransactionType
+  amount          Decimal           @db.Decimal(14, 2)
+  description     String?
+  descriptionGu   String?
+  category        String
+  categoryId      String?
+  categoryRel     Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  paymentMethod   PaymentMethod
+  status          TransactionStatus @default(PENDING)
+  date            DateTime
+  receiptUrl      String?
+  notes           String?
+  referenceId     String?
+  idempotencyKey  String?           @unique
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId      String
+  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  originalAmount  Decimal?          @db.Decimal(14, 2)
+  editedAt        DateTime?
+  editedBy        String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([businessId])
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([date])
+}
+
+model Category {
+  id           String          @id @default(cuid())
+  nameEn       String
+  nameGu       String
+  type         TransactionType
+  businessId   String?
+  business     Business?       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  isSystem     Boolean         @default(false)
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([businessId])
+  @@index([type])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  titleEn   String
+  titleGu   String
+  messageEn String
+  messageGu String
+  isRead    Boolean  @default(false)
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  action     String
+  entity     String
+  entityId   String
+  beforeData Json?
+  afterData  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entity])
+  @@index([action])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model DailyReport {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId      String
+  business        Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  date            DateTime
+  totalIncome     Decimal      @default(0) @db.Decimal(14, 2)
+  totalExpenses   Decimal      @default(0) @db.Decimal(14, 2)
+  totalInvestment Decimal      @default(0) @db.Decimal(14, 2)
+  netProfit       Decimal      @default(0) @db.Decimal(14, 2)
+  transactionCount Int         @default(0)
+  status          ReportStatus @default(DRAFT)
+  submittedAt     DateTime?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([businessId])
+  @@index([userId])
+  @@index([date])
+}
